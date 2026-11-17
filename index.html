@@ -127,111 +127,145 @@ form.inline{display:flex;gap:8px;margin-top:12px}form.inline input{margin:0}
 </div>
 </section>
 
-<p class="note">Demo mode: data is saved in your browser only. Connect Firebase or Supabase to share it between users.</p>
+<p class="note">Your expenses and chat are visible only to the students in your home.</p>
+<div id="toast" role="status" style="display:none;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#14213d;color:#fff;padding:10px 18px;border-radius:8px;max-width:90vw;z-index:9"></div>
 </div></main>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="auth.js"></script>
 <script>
 const $=s=>document.querySelector(s);
-const store={get(k,d){try{const v=localStorage.getItem('sr_'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('sr_'+k,JSON.stringify(v))}catch(e){}}};
-const ME='You', MATES=['You','Aarav','Meera'];
-
-const CANDIDATES=[
-{id:1,name:'Riya Sharma',course:'B.Tech, 2nd year',budget:7500,sleep:'early',clean:3,smoke:'no',study:'quiet'},
-{id:2,name:'Kabir Singh',course:'MBA, 1st year',budget:9000,sleep:'late',clean:2,smoke:'no',study:'social'},
-{id:3,name:'Ananya Rao',course:'B.Sc, 3rd year',budget:8000,sleep:'early',clean:4,smoke:'no',study:'quiet'},
-{id:4,name:'Dev Malhotra',course:'M.Tech, 1st year',budget:6500,sleep:'late',clean:1,smoke:'yes',study:'social'},
-{id:5,name:'Sana Khan',course:'BA, 2nd year',budget:8500,sleep:'late',clean:3,smoke:'no',study:'quiet'}];
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const q=async p=>{const r=await p;if(r.error)throw r.error;return r.data};
+let me,prof,names={},mates=[],exps=[],msgs=[],chatSub=null,tt;
+function flash(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(tt);tt=setTimeout(()=>t.style.display='none',4000)}
+const run=f=>async(...a)=>{try{await f(...a)}catch(e){flash(e.message||'Something went wrong')}};
+const nm=id=>id===me?'You':(names[id]||'Student');
+const NOHOME='<li class="empty">Set up your home first: save details in “My home”, or accept a roommate request.</li>';
 
 function prefs(){return{budget:+$('#pBudget').value||0,sleep:$('#pSleep').value,clean:+$('#pClean').value,smoke:$('#pSmoke').value,study:$('#pStudy').value}}
 function compat(p,c){
- const parts={
-  Budget:Math.max(0,1-Math.abs(p.budget-c.budget)/Math.max(p.budget,1)*2),
-  Sleep:p.sleep===c.sleep?1:0.2,
-  Tidiness:1-Math.abs(p.clean-c.clean)/3,
-  Smoking:p.smoke===c.smoke?1:0,
-  Study:p.study===c.study?1:0.3};
+ const parts={Budget:Math.max(0,1-Math.abs(p.budget-c.budget)/Math.max(p.budget,1)*2),Sleep:p.sleep===c.sleep?1:0.2,Tidiness:1-Math.abs(p.clean-c.clean)/3,Smoking:p.smoke===c.smoke?1:0,Study:p.study===c.study?1:0.3};
  const w={Budget:.25,Sleep:.2,Tidiness:.25,Smoking:.15,Study:.15};
  let s=0;for(const k in parts)s+=parts[k]*w[k];
  return{score:Math.round(s*100),parts};
 }
-
-let requests=store.get('req',[]);
-let inbox=store.get('inbox',[{id:101,name:'Tanvi Joshi',note:'Looking for a quiet 2-sharing near campus.',status:'pending'}]);
-function renderMatches(){
- const p=prefs();
- const list=CANDIDATES.map(c=>({c,r:compat(p,c)})).sort((a,b)=>b.r.score-a.r.score);
- $('#matchList').innerHTML=list.map(({c,r})=>{
-  const sent=requests.some(q=>q.id===c.id);
-  return `<article class="panel match"><div style="display:flex;justify-content:space-between;align-items:start"><div><h3>${c.name}</h3><span class="note">${c.course} · up to ₹${c.budget}</span></div><div class="score">${r.score}%</div></div>
-  <div class="bars">${Object.entries(r.parts).map(([k,v])=>`<div class="bar">${k}<i><b style="width:${Math.round(v*100)}%"></b></i></div>`).join('')}</div>
-  <button data-id="${c.id}" ${sent?'disabled':''}>${sent?'Request sent':'Send request'}</button></article>`}).join('');
+async function loadNames(){(await q(sb.from('profiles').select('id,name'))).forEach(p=>names[p.id]=p.name)}
+async function refreshProf(){prof=await q(sb.from('profiles').select('*').eq('id',me).single())}
+async function loadProfile(u){
+ let d=await q(sb.from('profiles').select('*').eq('id',me).maybeSingle());
+ if(!d){await q(sb.from('profiles').insert({id:me,name:u.name}));d=await q(sb.from('profiles').select('*').eq('id',me).single())}
+ prof=d;
+ $('#pBudget').value=d.budget;$('#pSleep').value=d.sleep;$('#pClean').value=d.clean;$('#pSmoke').value=d.smoke;$('#pStudy').value=d.study;
 }
-$('#matchList').addEventListener('click',e=>{
- const id=+e.target.dataset.id;if(!id)return;
- const c=CANDIDATES.find(x=>x.id===id);
- requests.push({id,name:c.name,status:'pending'});store.set('req',requests);renderMatches();renderRequests();
+async function loadMates(){mates=prof.household_id?await q(sb.from('profiles').select('id,name').eq('household_id',prof.household_id)):[]}
+function resetChat(){if(chatSub){sb.removeChannel(chatSub);chatSub=null}msgs=[]}
+
+const renderMatches=run(async()=>{
+ const p=prefs();
+ await q(sb.from('profiles').update(p).eq('id',me));
+ const [others,reqs]=await Promise.all([q(sb.from('profiles').select('*').neq('id',me)),q(sb.from('requests').select('*'))]);
+ const rel={};reqs.forEach(r=>{rel[r.from_id===me?r.to_id:r.from_id]=r});
+ const list=others.map(c=>({c,r:compat(p,c)})).sort((a,b)=>b.r.score-a.r.score);
+ $('#matchList').innerHTML=list.length?list.map(({c,r})=>{
+  const x=rel[c.id];const lab=!x?'Send request':x.from_id===me?'Request '+x.status:'See Requests tab';
+  return `<article class="panel match"><div style="display:flex;justify-content:space-between;align-items:start"><div><h3>${esc(c.name)}</h3><span class="note">Budget up to ₹${c.budget}</span></div><div class="score">${r.score}%</div></div>
+  <div class="bars">${Object.entries(r.parts).map(([k,v])=>`<div class="bar">${k}<i><b style="width:${Math.round(v*100)}%"></b></i></div>`).join('')}</div>
+  <button data-id="${c.id}" ${x?'disabled':''}>${lab}</button></article>`}).join(''):'<p class="empty">No other students have joined yet. Share your site link with friends!</p>';
 });
+$('#matchList').addEventListener('click',run(async e=>{
+ const id=e.target.dataset.id;if(!id)return;
+ await q(sb.from('requests').insert({from_id:me,to_id:id}));
+ flash('Request sent!');renderMatches();
+}));
 $('#refresh').onclick=renderMatches;
 
-function renderRequests(){
- $('#inbox').innerHTML=inbox.length?inbox.map(r=>`<li><div><strong>${r.name}</strong><br><span class="note">${r.note}</span></div>${r.status==='pending'?`<div><button data-a="accepted" data-i="${r.id}">Accept</button> <button class="alt" data-a="declined" data-i="${r.id}">Decline</button></div>`:`<span class="tag ${r.status}">${r.status}</span>`}</li>`).join(''):'<li class="empty">No requests yet.</li>';
- $('#sent').innerHTML=requests.length?requests.map(r=>`<li><strong>${r.name}</strong><span class="tag ${r.status}">${r.status}</span></li>`).join(''):'<li class="empty">You haven’t sent any requests. Find a match to get started.</li>';
-}
-$('#inbox').addEventListener('click',e=>{
- const a=e.target.dataset.a;if(!a)return;
- const r=inbox.find(x=>x.id===+e.target.dataset.i);r.status=a;store.set('inbox',inbox);renderRequests();
+const renderRequests=run(async()=>{
+ const reqs=await q(sb.from('requests').select('*').order('created_at',{ascending:false}));
+ const inb=reqs.filter(r=>r.to_id===me),out=reqs.filter(r=>r.from_id===me);
+ $('#inbox').innerHTML=inb.length?inb.map(r=>`<li><strong>${esc(nm(r.from_id))}</strong>${r.status==='pending'?`<div><button data-a="accept" data-i="${r.id}">Accept</button> <button class="alt" data-a="decline" data-i="${r.id}">Decline</button></div>`:`<span class="tag ${r.status}">${r.status}</span>`}</li>`).join(''):'<li class="empty">No requests yet.</li>';
+ $('#sent').innerHTML=out.length?out.map(r=>`<li><strong>${esc(nm(r.to_id))}</strong><span class="tag ${r.status}">${r.status}</span></li>`).join(''):'<li class="empty">You haven’t sent any requests. Find a match to get started.</li>';
+});
+$('#inbox').addEventListener('click',run(async e=>{
+ const a=e.target.dataset.a,i=e.target.dataset.i;if(!a)return;
+ if(a==='accept'){await q(sb.rpc('accept_request',{req:+i}));await refreshProf();resetChat();flash('You now share a home!')}
+ else await q(sb.from('requests').update({status:'declined'}).eq('id',i));
+ renderRequests();
+}));
+
+const renderHome=run(async()=>{
+ for(const k of ['Addr','Rent','Rooms','Lord','Rules'])$('#h'+k).value='';
+ if(prof.household_id){
+  const h=await q(sb.from('households').select('*').eq('id',prof.household_id).single());
+  $('#hAddr').value=h.address||'';$('#hRent').value=h.rent||'';$('#hRooms').value=h.rooms||'';$('#hLord').value=h.landlord||'';$('#hRules').value=h.rules||'';
+ }
+ await loadMates();
+ $('#mates').innerHTML=mates.length?mates.map(m=>`<li><strong>${esc(nm(m.id))}</strong></li>`).join(''):'<li class="empty">No housemates yet. Send a request to a match; when they accept, you’ll share a home.</li>';
+});
+$('#saveHome').onclick=run(async()=>{
+ await q(sb.rpc('save_household',{p_address:$('#hAddr').value,p_rent:+$('#hRent').value||null,p_rooms:+$('#hRooms').value||null,p_landlord:$('#hLord').value,p_rules:$('#hRules').value}));
+ await refreshProf();$('#homeMsg').textContent='Saved.';setTimeout(()=>$('#homeMsg').textContent='',2000);renderHome();
 });
 
-function renderHome(){
- const h=store.get('home',{});
- for(const k of ['Addr','Rent','Rooms','Lord','Rules'])$('#h'+k).value=h[k]||'';
- $('#mates').innerHTML=MATES.map(m=>`<li><strong>${m}</strong>${m===ME?'<span class="tag">Admin</span>':''}</li>`).join('');
-}
-$('#saveHome').onclick=()=>{
- const h={};for(const k of ['Addr','Rent','Rooms','Lord','Rules'])h[k]=$('#h'+k).value;
- store.set('home',h);$('#homeMsg').textContent='Saved.';setTimeout(()=>$('#homeMsg').textContent='',2000);
-};
+const renderExp=run(async()=>{
+ const hid=prof.household_id;
+ if(!hid){$('#balances').innerHTML=NOHOME;$('#expList').innerHTML='';return}
+ await loadMates();
+ exps=await q(sb.from('expenses').select('*').eq('household_id',hid).order('created_at'));
+ $('#ePaid').innerHTML=mates.map(m=>`<option value="${m.id}" ${m.id===me?'selected':''}>${esc(nm(m.id))}</option>`).join('');
+ const bal={};mates.forEach(m=>bal[m.id]=0);
+ exps.forEach(x=>{const a=+x.amount,share=a/mates.length;mates.forEach(m=>bal[m.id]-=share);if(x.paid_by in bal)bal[x.paid_by]+=a});
+ $('#balances').innerHTML=mates.map(m=>{const v=Math.round(bal[m.id]);return `<li><strong>${esc(nm(m.id))}</strong><span class="${v<0?'owe':v>0?'get':''}">${v<0?'owes ₹'+(-v):v>0?'gets back ₹'+v:'settled'}</span></li>`}).join('');
+ $('#expList').innerHTML=exps.length?[...exps].reverse().map(x=>`<li><span>${esc(x.what)} <span class="note">paid by ${esc(nm(x.paid_by))}</span></span><strong>₹${x.amount}</strong></li>`).join(''):'<li class="empty">No expenses yet. Add the first one above.</li>';
+});
+$('#expForm').onsubmit=run(async e=>{e.preventDefault();
+ if(!prof.household_id){flash('Set up your home first.');return}
+ await q(sb.from('expenses').insert({household_id:prof.household_id,what:$('#eWhat').value.trim(),amount:+$('#eAmt').value,paid_by:$('#ePaid').value}));
+ e.target.reset();renderExp();
+});
+$('#settle').onclick=run(async()=>{
+ if(!prof.household_id||!confirm('Clear all expenses for your home?'))return;
+ await q(sb.from('expenses').delete().eq('household_id',prof.household_id));renderExp();
+});
 
-let exps=store.get('exp',[{what:'Wi-Fi',amt:900,paid:'Aarav'},{what:'Groceries',amt:1500,paid:'You'}]);
-function renderExp(){
- $('#ePaid').innerHTML=MATES.map(m=>`<option>${m}</option>`).join('');
- const bal={};MATES.forEach(m=>bal[m]=0);
- exps.forEach(x=>{const share=x.amt/MATES.length;MATES.forEach(m=>bal[m]-=share);bal[x.paid]+=x.amt});
- $('#balances').innerHTML=MATES.map(m=>{const v=Math.round(bal[m]);
-  return `<li><strong>${m}</strong><span class="${v<0?'owe':v>0?'get':''}">${v<0?'owes ₹'+(-v):v>0?'gets back ₹'+v:'settled'}</span></li>`}).join('');
- $('#expList').innerHTML=exps.length?[...exps].reverse().map(x=>`<li><span>${x.what} <span class="note">paid by ${x.paid}</span></span><strong>₹${x.amt}</strong></li>`).join(''):'<li class="empty">No expenses yet. Add the first one above.</li>';
-}
-$('#expForm').onsubmit=e=>{e.preventDefault();
- exps.push({what:$('#eWhat').value.trim(),amt:+$('#eAmt').value,paid:$('#ePaid').value});
- store.set('exp',exps);e.target.reset();renderExp();};
-$('#settle').onclick=()=>{exps=[];store.set('exp',exps);renderExp();};
-
-let msgs=store.get('chat',[{who:'Aarav',t:'Wi-Fi bill is added to expenses.'},{who:'Meera',t:'Thanks! I’ll pay the groceries next.'}]);
-function renderChat(){
+function drawChat(){
  const box=$('#chatBox');
- box.innerHTML=msgs.map(m=>{const t=document.createElement('div');t.textContent=m.t;return `<div class="msg ${m.who===ME?'me':''}"><small>${m.who}</small>${t.innerHTML}</div>`}).join('');
+ box.innerHTML=prof.household_id?(msgs.length?msgs.map(m=>`<div class="msg ${m.sender===me?'me':''}"><small>${esc(nm(m.sender))}</small>${esc(m.body)}</div>`).join(''):'<p class="empty">No messages yet. Say hi!</p>'):'<p class="empty">Chat opens once you share a home with a housemate.</p>';
  box.scrollTop=box.scrollHeight;
 }
-$('#chatForm').onsubmit=e=>{e.preventDefault();
- msgs.push({who:ME,t:$('#chatIn').value.trim()});store.set('chat',msgs);e.target.reset();renderChat();};
+const loadChat=run(async()=>{
+ if(prof.household_id){
+  msgs=await q(sb.from('messages').select('*').eq('household_id',prof.household_id).order('created_at').limit(200));
+  if(!chatSub){const hid=prof.household_id;
+   chatSub=sb.channel('house-'+hid).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'household_id=eq.'+hid},p=>{if(!msgs.some(m=>m.id===p.new.id)){msgs.push(p.new);drawChat()}}).subscribe();}
+ }
+ drawChat();
+});
+$('#chatForm').onsubmit=run(async e=>{e.preventDefault();
+ if(!prof.household_id){flash('Chat opens once you share a home.');return}
+ const m=await q(sb.from('messages').insert({household_id:prof.household_id,sender:me,body:$('#chatIn').value.trim()}).select().single());
+ if(!msgs.some(x=>x.id===m.id))msgs.push(m);
+ e.target.reset();drawChat();
+});
 
-function route(){
+async function route(){
  const id=(location.hash||'#matches').slice(1);
  document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===id));
  document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+id));
+ try{await loadNames();await refreshProf()}catch(e){}
+ ({matches:renderMatches,requests:renderRequests,home:renderHome,expenses:renderExp,chat:loadChat})[id]?.();
 }
-addEventListener('hashchange',route);
-route();renderMatches();renderRequests();renderHome();renderExp();renderChat();
-</script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="auth.js"></script>
-<script>
-Auth.user().then(u=>{
+
+(async()=>{
+ const u=await Auth.user();
  if(!u){location.replace('login.html');return}
- $('#who').textContent=u.name;
- $('#gate').remove();
-});
-$('#logout').onclick=async()=>{await Auth.signOut();location.replace('login.html')};
+ $('#gate').remove();$('#who').textContent=u.name;
+ $('#logout').onclick=async()=>{await Auth.signOut();location.replace('login.html')};
+ if(!Auth.live){document.querySelector('main .wrap').innerHTML='<div class="panel"><h2>Connect Supabase</h2><p>Add your Supabase URL and anon key at the top of <code>auth.js</code> to switch on real accounts and shared data.</p></div>';return}
+ try{me=(await sb.auth.getSession()).data.session.user.id;await loadProfile(u)}
+ catch(e){flash('Could not load your profile. Did you run schema.sql in Supabase?');return}
+ addEventListener('hashchange',route);route();
+})();
 </script>
 </body>
 </html>
