@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Roommate &amp; Accommodation Management System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style id="gate">body{visibility:hidden}</style>
+<style>
+:root{--ink:#14213d;--paper:#f4f6f8;--card:#fff;--line:#dbe1e8;--muted:#5d6b7e;--key:#f2b134;--good:#2f8f6b;--bad:#c4473a;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.5 Figtree,system-ui,sans-serif;background:var(--paper);color:var(--ink)}
+h1,h2,h3{font-family:'Bricolage Grotesque',Figtree,sans-serif;line-height:1.1;margin:0}
+header{background:var(--ink);color:#fff;padding:28px 20px 0}
+.wrap{max-width:960px;margin:0 auto}
+header h1{font-size:clamp(1.8rem,5vw,3rem);font-weight:800;max-width:14em}
+header p{margin:10px 0 22px;color:#b9c4d6;max-width:40em}
+nav{display:flex;gap:4px;overflow-x:auto}
+nav a{padding:12px 18px;color:#b9c4d6;text-decoration:none;border-radius:var(--r) var(--r) 0 0;font-weight:600;white-space:nowrap}
+nav a.on{background:var(--paper);color:var(--ink)}
+nav a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--key);outline-offset:2px}
+main{padding:24px 20px 60px}
+section{display:none}section.on{display:block}
+h2{font-size:1.6rem;margin-bottom:14px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:18px}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+label{display:block;font-size:.9rem;font-weight:600;margin-bottom:10px}
+input,select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;margin-top:4px}
+.row{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+button{font:inherit;font-weight:600;padding:9px 16px;border-radius:8px;border:0;background:var(--ink);color:#fff;cursor:pointer}
+button.alt{background:transparent;color:var(--ink);border:1px solid var(--ink)}
+button.key{background:var(--key);color:var(--ink)}
+button:disabled{opacity:.5;cursor:default}
+.match h3{font-size:1.2rem}
+.score{font:800 2.2rem 'Bricolage Grotesque',sans-serif}
+.bars{margin:10px 0 14px;display:grid;gap:6px}
+.bar{display:grid;grid-template-columns:90px 1fr;align-items:center;gap:8px;font-size:.85rem;color:var(--muted)}
+.bar i{display:block;height:8px;border-radius:4px;background:#e6ebf1;position:relative;overflow:hidden}
+.bar i b{position:absolute;inset:0 auto 0 0;background:var(--good)}
+.tag{display:inline-block;padding:2px 10px;border-radius:99px;font-size:.8rem;font-weight:600;background:#e6ebf1}
+.tag.accepted{background:#d5eee3;color:var(--good)}.tag.declined{background:#f6dcd9;color:var(--bad)}.tag.pending{background:#fbeccb}
+.list{list-style:none;margin:0;padding:0}
+.list li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.list li:last-child{border:0}
+.owe{color:var(--bad);font-weight:600}.get{color:var(--good);font-weight:600}
+.chat{height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px}
+.msg{max-width:75%;padding:8px 12px;border-radius:12px;background:#e6ebf1}
+.msg small{display:block;color:var(--muted);font-size:.75rem}
+.msg.me{align-self:flex-end;background:var(--key)}
+.msg.me small{color:#5a4310}
+form.inline{display:flex;gap:8px;margin-top:12px}form.inline input{margin:0}
+.empty{color:var(--muted);padding:8px 0}
+.note{font-size:.85rem;color:var(--muted)}
+@media (prefers-reduced-motion:no-preference){.bar b{transition:width .4s}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+<div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-bottom:14px"><span id="who" style="color:#b9c4d6"></span><button id="logout" class="alt" style="color:#fff;border-color:#b9c4d6">Log out</button></div>
+<h1>Find a roommate you can actually live with</h1>
+<p>Match with students by lifestyle, manage your shared home, split expenses, and keep everyone in the loop.</p>
+<nav aria-label="Main">
+<a href="#matches" class="on">Find roommates</a><a href="#requests">Requests</a><a href="#home">My home</a><a href="#expenses">Expenses</a><a href="#chat">House chat</a>
+</nav></div></header>
+
+<main><div class="wrap">
+
+<section id="matches" class="on">
+<h2>Find roommates</h2>
+<div class="panel">
+<h3 style="font-size:1.1rem;margin-bottom:12px">Your living preferences</h3>
+<div class="row">
+<label>Monthly budget (₹)<input id="pBudget" type="number" value="8000" step="500"></label>
+<label>Sleep schedule<select id="pSleep"><option value="early">Early bird</option><option value="late">Night owl</option></select></label>
+<label>Tidiness<select id="pClean"><option value="1">Relaxed</option><option value="2">Average</option><option value="3" selected>Tidy</option><option value="4">Very neat</option></select></label>
+<label>Smoking<select id="pSmoke"><option value="no">Non-smoker</option><option value="yes">Smoker</option></select></label>
+<label>Study style<select id="pStudy"><option value="quiet">Quiet</option><option value="social">Social</option></select></label>
+</div>
+<button id="refresh">Update matches</button>
+</div>
+<div id="matchList" class="grid"></div>
+</section>
+
+<section id="requests">
+<h2>Roommate requests</h2>
+<div class="panel"><h3 style="font-size:1.1rem">Received</h3><ul id="inbox" class="list"></ul></div>
+<div class="panel"><h3 style="font-size:1.1rem">Sent</h3><ul id="sent" class="list"></ul></div>
+</section>
+
+<section id="home">
+<h2>My home</h2>
+<div class="panel">
+<div class="row">
+<label>Address<input id="hAddr" placeholder="e.g. 12, Green Park, near campus gate 2"></label>
+<label>Monthly rent (₹)<input id="hRent" type="number" placeholder="24000"></label>
+<label>Rooms<input id="hRooms" type="number" placeholder="3"></label>
+<label>Landlord contact<input id="hLord" placeholder="Name / phone"></label>
+</div>
+<label>House rules<input id="hRules" placeholder="Quiet after 11 pm, guests need notice…"></label>
+<button id="saveHome" class="key">Save home details</button> <span id="homeMsg" class="note"></span>
+</div>
+<div class="panel"><h3 style="font-size:1.1rem">Housemates</h3><ul id="mates" class="list"></ul></div>
+</section>
+
+<section id="expenses">
+<h2>Shared expenses</h2>
+<div class="panel">
+<form id="expForm" class="row">
+<label>What for<input id="eWhat" required placeholder="Groceries"></label>
+<label>Amount (₹)<input id="eAmt" type="number" min="1" required></label>
+<label>Paid by<select id="ePaid"></select></label>
+<div style="align-self:end;margin-bottom:10px"><button class="key">Add expense</button></div>
+</form>
+<p class="note">Each expense is split equally between all housemates.</p>
+</div>
+<div class="panel"><h3 style="font-size:1.1rem">Balances</h3><ul id="balances" class="list"></ul>
+<button id="settle" class="alt">Mark all as settled</button></div>
+<div class="panel"><h3 style="font-size:1.1rem">History</h3><ul id="expList" class="list"></ul></div>
+</section>
+
+<section id="chat">
+<h2>House chat</h2>
+<div class="panel">
+<div id="chatBox" class="chat" aria-live="polite"></div>
+<form id="chatForm" class="inline"><input id="chatIn" placeholder="Message your housemates" aria-label="Message" required><button class="key">Send</button></form>
+</div>
+</section>
+
+<p class="note">Demo mode: data is saved in your browser only. Connect Firebase or Supabase to share it between users.</p>
+</div></main>
+
+<script>
+const $=s=>document.querySelector(s);
+const store={get(k,d){try{const v=localStorage.getItem('sr_'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('sr_'+k,JSON.stringify(v))}catch(e){}}};
+const ME='You', MATES=['You','Aarav','Meera'];
+
+const CANDIDATES=[
+{id:1,name:'Riya Sharma',course:'B.Tech, 2nd year',budget:7500,sleep:'early',clean:3,smoke:'no',study:'quiet'},
+{id:2,name:'Kabir Singh',course:'MBA, 1st year',budget:9000,sleep:'late',clean:2,smoke:'no',study:'social'},
+{id:3,name:'Ananya Rao',course:'B.Sc, 3rd year',budget:8000,sleep:'early',clean:4,smoke:'no',study:'quiet'},
+{id:4,name:'Dev Malhotra',course:'M.Tech, 1st year',budget:6500,sleep:'late',clean:1,smoke:'yes',study:'social'},
+{id:5,name:'Sana Khan',course:'BA, 2nd year',budget:8500,sleep:'late',clean:3,smoke:'no',study:'quiet'}];
+
+function prefs(){return{budget:+$('#pBudget').value||0,sleep:$('#pSleep').value,clean:+$('#pClean').value,smoke:$('#pSmoke').value,study:$('#pStudy').value}}
+function compat(p,c){
+ const parts={
+  Budget:Math.max(0,1-Math.abs(p.budget-c.budget)/Math.max(p.budget,1)*2),
+  Sleep:p.sleep===c.sleep?1:0.2,
+  Tidiness:1-Math.abs(p.clean-c.clean)/3,
+  Smoking:p.smoke===c.smoke?1:0,
+  Study:p.study===c.study?1:0.3};
+ const w={Budget:.25,Sleep:.2,Tidiness:.25,Smoking:.15,Study:.15};
+ let s=0;for(const k in parts)s+=parts[k]*w[k];
+ return{score:Math.round(s*100),parts};
+}
+
+let requests=store.get('req',[]);
+let inbox=store.get('inbox',[{id:101,name:'Tanvi Joshi',note:'Looking for a quiet 2-sharing near campus.',status:'pending'}]);
+function renderMatches(){
+ const p=prefs();
+ const list=CANDIDATES.map(c=>({c,r:compat(p,c)})).sort((a,b)=>b.r.score-a.r.score);
+ $('#matchList').innerHTML=list.map(({c,r})=>{
+  const sent=requests.some(q=>q.id===c.id);
+  return `<article class="panel match"><div style="display:flex;justify-content:space-between;align-items:start"><div><h3>${c.name}</h3><span class="note">${c.course} · up to ₹${c.budget}</span></div><div class="score">${r.score}%</div></div>
+  <div class="bars">${Object.entries(r.parts).map(([k,v])=>`<div class="bar">${k}<i><b style="width:${Math.round(v*100)}%"></b></i></div>`).join('')}</div>
+  <button data-id="${c.id}" ${sent?'disabled':''}>${sent?'Request sent':'Send request'}</button></article>`}).join('');
+}
+$('#matchList').addEventListener('click',e=>{
+ const id=+e.target.dataset.id;if(!id)return;
+ const c=CANDIDATES.find(x=>x.id===id);
+ requests.push({id,name:c.name,status:'pending'});store.set('req',requests);renderMatches();renderRequests();
+});
+$('#refresh').onclick=renderMatches;
+
+function renderRequests(){
+ $('#inbox').innerHTML=inbox.length?inbox.map(r=>`<li><div><strong>${r.name}</strong><br><span class="note">${r.note}</span></div>${r.status==='pending'?`<div><button data-a="accepted" data-i="${r.id}">Accept</button> <button class="alt" data-a="declined" data-i="${r.id}">Decline</button></div>`:`<span class="tag ${r.status}">${r.status}</span>`}</li>`).join(''):'<li class="empty">No requests yet.</li>';
+ $('#sent').innerHTML=requests.length?requests.map(r=>`<li><strong>${r.name}</strong><span class="tag ${r.status}">${r.status}</span></li>`).join(''):'<li class="empty">You haven’t sent any requests. Find a match to get started.</li>';
+}
+$('#inbox').addEventListener('click',e=>{
+ const a=e.target.dataset.a;if(!a)return;
+ const r=inbox.find(x=>x.id===+e.target.dataset.i);r.status=a;store.set('inbox',inbox);renderRequests();
+});
+
+function renderHome(){
+ const h=store.get('home',{});
+ for(const k of ['Addr','Rent','Rooms','Lord','Rules'])$('#h'+k).value=h[k]||'';
+ $('#mates').innerHTML=MATES.map(m=>`<li><strong>${m}</strong>${m===ME?'<span class="tag">Admin</span>':''}</li>`).join('');
+}
+$('#saveHome').onclick=()=>{
+ const h={};for(const k of ['Addr','Rent','Rooms','Lord','Rules'])h[k]=$('#h'+k).value;
+ store.set('home',h);$('#homeMsg').textContent='Saved.';setTimeout(()=>$('#homeMsg').textContent='',2000);
+};
+
+let exps=store.get('exp',[{what:'Wi-Fi',amt:900,paid:'Aarav'},{what:'Groceries',amt:1500,paid:'You'}]);
+function renderExp(){
+ $('#ePaid').innerHTML=MATES.map(m=>`<option>${m}</option>`).join('');
+ const bal={};MATES.forEach(m=>bal[m]=0);
+ exps.forEach(x=>{const share=x.amt/MATES.length;MATES.forEach(m=>bal[m]-=share);bal[x.paid]+=x.amt});
+ $('#balances').innerHTML=MATES.map(m=>{const v=Math.round(bal[m]);
+  return `<li><strong>${m}</strong><span class="${v<0?'owe':v>0?'get':''}">${v<0?'owes ₹'+(-v):v>0?'gets back ₹'+v:'settled'}</span></li>`}).join('');
+ $('#expList').innerHTML=exps.length?[...exps].reverse().map(x=>`<li><span>${x.what} <span class="note">paid by ${x.paid}</span></span><strong>₹${x.amt}</strong></li>`).join(''):'<li class="empty">No expenses yet. Add the first one above.</li>';
+}
+$('#expForm').onsubmit=e=>{e.preventDefault();
+ exps.push({what:$('#eWhat').value.trim(),amt:+$('#eAmt').value,paid:$('#ePaid').value});
+ store.set('exp',exps);e.target.reset();renderExp();};
+$('#settle').onclick=()=>{exps=[];store.set('exp',exps);renderExp();};
+
+let msgs=store.get('chat',[{who:'Aarav',t:'Wi-Fi bill is added to expenses.'},{who:'Meera',t:'Thanks! I’ll pay the groceries next.'}]);
+function renderChat(){
+ const box=$('#chatBox');
+ box.innerHTML=msgs.map(m=>{const t=document.createElement('div');t.textContent=m.t;return `<div class="msg ${m.who===ME?'me':''}"><small>${m.who}</small>${t.innerHTML}</div>`}).join('');
+ box.scrollTop=box.scrollHeight;
+}
+$('#chatForm').onsubmit=e=>{e.preventDefault();
+ msgs.push({who:ME,t:$('#chatIn').value.trim()});store.set('chat',msgs);e.target.reset();renderChat();};
+
+function route(){
+ const id=(location.hash||'#matches').slice(1);
+ document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===id));
+ document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+id));
+}
+addEventListener('hashchange',route);
+route();renderMatches();renderRequests();renderHome();renderExp();renderChat();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="auth.js"></script>
+<script>
+Auth.user().then(u=>{
+ if(!u){location.replace('login.html');return}
+ $('#who').textContent=u.name;
+ $('#gate').remove();
+});
+$('#logout').onclick=async()=>{await Auth.signOut();location.replace('login.html')};
+</script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log in · Smart Roommate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#14213d;--paper:#f4f6f8;--line:#dbe1e8;--muted:#5d6b7e;--key:#f2b134;--bad:#c4473a;--good:#2f8f6b;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;grid-template-columns:1fr 1fr;font:16px/1.5 Figtree,system-ui,sans-serif;background:var(--paper);color:var(--ink)}
+h1,h2{font-family:'Bricolage Grotesque',Figtree,sans-serif;line-height:1.1;margin:0}
+aside{background:var(--ink);color:#fff;padding:48px;display:flex;flex-direction:column;justify-content:center}
+aside h1{font-size:clamp(2rem,4vw,3.2rem);font-weight:800}
+aside p{color:#b9c4d6;max-width:28em;margin-top:14px}
+main{display:flex;align-items:center;justify-content:center;padding:32px 20px}
+.box{width:100%;max-width:380px}
+.box h2{font-size:1.8rem;margin-bottom:6px}
+.tabs{display:flex;gap:4px;margin:18px 0}
+.tabs button{flex:1;background:transparent;color:var(--ink);border:1px solid var(--line)}
+.tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+label{display:block;font-size:.9rem;font-weight:600;margin-bottom:12px}
+input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;margin-top:4px}
+button{font:inherit;font-weight:600;padding:10px 16px;border-radius:8px;border:0;cursor:pointer}
+.go{width:100%;background:var(--key);color:var(--ink);margin-top:6px}
+button:focus-visible,input:focus-visible{outline:3px solid var(--key);outline-offset:2px}
+button:disabled{opacity:.6}
+#msg{min-height:1.4em;margin-top:12px;font-size:.9rem}
+#msg.err{color:var(--bad)}#msg.ok{color:var(--good)}
+.note{font-size:.85rem;color:var(--muted);margin-top:18px}
+[hidden]{display:none}
+@media (max-width:760px){body{grid-template-columns:1fr}aside{padding:28px 20px}}
+</style>
+</head>
+<body>
+<aside>
+<h1>Smart Roommate</h1>
+<p>Find students you’ll get along with, split bills fairly, and keep your home organised.</p>
+</aside>
+<main><div class="box">
+<h2 id="title">Welcome back</h2>
+<div class="tabs" role="tablist">
+<button type="button" id="tIn" class="on" role="tab">Log in</button>
+<button type="button" id="tUp" role="tab">Create account</button>
+</div>
+<form id="f">
+<label id="nameWrap" hidden>Full name<input id="name" autocomplete="name"></label>
+<label>College email<input id="email" type="email" required autocomplete="email"></label>
+<label>Password<input id="pw" type="password" minlength="6" required autocomplete="current-password"></label>
+<button class="go" id="submit">Log in</button>
+<div id="msg" role="status"></div>
+</form>
+<p class="note" id="demoNote" hidden>Demo mode: no real account is created. Add your Supabase keys in auth.js to enable real sign-up.</p>
+</div></main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="auth.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+let mode='in';
+Auth.user().then(u=>{if(u)location.replace('index.html')});
+if(!Auth.live)$('#demoNote').hidden=false;
+
+function setMode(m){
+ mode=m;
+ $('#tIn').classList.toggle('on',m==='in');$('#tUp').classList.toggle('on',m==='up');
+ $('#nameWrap').hidden=m==='in';$('#name').required=m==='up';
+ $('#title').textContent=m==='in'?'Welcome back':'Create your account';
+ $('#submit').textContent=m==='in'?'Log in':'Create account';
+ $('#pw').autocomplete=m==='in'?'current-password':'new-password';
+ $('#msg').textContent='';
+}
+$('#tIn').onclick=()=>setMode('in');
+$('#tUp').onclick=()=>setMode('up');
+
+$('#f').onsubmit=async e=>{
+ e.preventDefault();
+ const msg=$('#msg'),btn=$('#submit');
+ msg.className='';msg.textContent='';btn.disabled=true;
+ try{
+  const email=$('#email').value.trim(),pw=$('#pw').value;
+  if(mode==='up'){
+   const r=await Auth.signUp($('#name').value.trim(),email,pw);
+   if(r.needsConfirm){msg.className='ok';msg.textContent='Check your email to confirm your account, then log in.';btn.disabled=false;return}
+  }else{await Auth.signIn(email,pw)}
+  location.replace('index.html');
+ }catch(err){
+  msg.className='err';
+  msg.textContent=(err&&err.message)||'Something went wrong. Check your details and try again.';
+  btn.disabled=false;
+ }
+};
+</script>
+</body>
+</html>
