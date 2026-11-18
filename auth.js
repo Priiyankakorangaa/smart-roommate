@@ -1,7 +1,7 @@
 // Paste your Supabase project values here to turn on real accounts.
 // Leave them empty to run in demo mode (no password is stored, browser only).
-const SUPABASE_URL = '';
-const SUPABASE_ANON_KEY = '';
+const SUPABASE_URL = ''https://gkpkhyhnfiweuwyvgcts.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrcGtoeWhuZml3ZXV3eXZnY3RzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MjczMjcsImV4cCI6MjExMDUwMzMyN30.8cYOOBHZj2k72rLBl246pVKV4c8vy1FtG-xVZMSWaSs';
 
 const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
